@@ -5,6 +5,8 @@ namespace App\Services;
 use GuzzleHttp\Client;
 use App\Contracts\IUser;
 use App\Contracts\IApiToken;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 use MarcinOrlowski\ResponseBuilder\ResponseBuilder;
 
 class ApiTokenService implements IApiToken
@@ -19,19 +21,26 @@ class ApiTokenService implements IApiToken
         $this->iUser = $iUser;
     }
 
+    public function user()
+    {
+        $user =  Auth::user();
+        $user->user_type;
+
+        return ResponseBuilder::asSuccess(200)
+            ->withMessage(__('auth.success', ['name' => $user->name]))
+            ->withData(['user' => $user])
+            ->build();
+    }
+
     public function getToken($request)
     {
         // Validate
         $credentials = (Object) $request->validated();
-        // Check if username or email is used
-        // Get email if username is used
-       if(!$this->isEmail($credentials->username))
-       {
-            $credentials->username = $this->getEmail($credentials->username);
-       }
+        // Set User
+       $this->setUser($credentials);
         // Return generated Token
-        return $this->generateTokenData($credentials) ?
-            $this->sendTokenResponse($this->token, $this->user) :
+        return $this->generateTokenData($credentials->password) ?
+            $this->sendTokenResponse($this->token) :
             $this->sendTokenFailResponse($this->error);
     }
 
@@ -40,14 +49,14 @@ class ApiTokenService implements IApiToken
         return filter_var($username, FILTER_VALIDATE_EMAIL);
     }
 
-    protected function getEmail($username)
+    protected function setUser($credentials)
     {
-        $this->user = $this->iUser->getByUsername($username);
-        
-        return $this->user ? $this->user->email : $username;
+        $this->user =  $this->isEmail($credentials->username) 
+            ? $this->iUser->getByEmail($credentials->username)
+            : $this->iUser->getByUsername($credentials->username);
     }
 
-    protected function generateTokenData($credentials)
+    protected function generateTokenData($password)
     {
         try {
             $http = new Client();
@@ -57,18 +66,19 @@ class ApiTokenService implements IApiToken
                     'grant_type' => 'password',
                     'client_id' => config('passport.password_grant_id'),
                     'client_secret' => config('passport.password_grant_secret'),
-                    'username' => $credentials->username,
-                    'password' => $credentials->password,
+                    'username' => $this->user->email,
+                    'password' => $password,
                     'scope' => ''
                 ],
             ]);
 
-            $this->user = $this->isEmail($credentials->username) ? 
-                $this->iUser->getByEmail($credentials->username) :
-                $this->iUser->getByUsername($credentials->username);
-
             $this->token = json_decode($response->getbody());
-            $this->token->user = $this->iUser->getWithUserType($this->user->id);
+
+            Log::info(__('auth.log', [
+                'name' => $this->user->name, 
+                'id' => $this->user->id,
+                'action' => 'logged in.'
+            ]));
 
             return true;
         } catch (\Exception $e) {
@@ -81,6 +91,7 @@ class ApiTokenService implements IApiToken
     protected function sendTokenResponse($data)
     {
         return ResponseBuilder::asSuccess(200)
+            ->withMessage(__('auth.received'))
             ->withData((array) $data)
             ->withHttpCode(200)
             ->build();
@@ -89,7 +100,7 @@ class ApiTokenService implements IApiToken
     protected function sendTokenFailResponse($error)
     {
         return ResponseBuilder::asError($error->getCode())
-            ->withMessage('Invalid username or password.')
+            ->withMessage(__('auth.failed'))
             ->withHttpCode($error->getCode())
             ->build();
     }
@@ -99,6 +110,12 @@ class ApiTokenService implements IApiToken
         $user->tokens->each(function($token, $key) {
             $token->delete();
         });
+
+        Log::info(__('auth.log', [
+                'name' => $this->user->name, 
+                'id' => $this->user->id,
+                'action' => 'logged out.'
+            ]));
 
         return ResponseBuilder::asSuccess(200)->build();
     }

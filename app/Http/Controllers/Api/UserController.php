@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Contracts\IUser;
 use Illuminate\Http\Request;
 use App\Http\Requests\UserRequest;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Auth;
 use MarcinOrlowski\ResponseBuilder\ResponseBuilder;
 
 class UserController extends Controller
@@ -24,6 +26,8 @@ class UserController extends Controller
      */
     public function index()
     {
+        $this->authorize('viewAny', $this->iUser->model);
+
         $usersPePage = $this->iUser->all();
 
         return ResponseBuilder::asSuccess(200)
@@ -39,10 +43,19 @@ class UserController extends Controller
      */
     public function store(UserRequest $request)
     {
+        $this->authorize('create', $this->iUser->model);
+
         $validatedRequest = $request->validated();
 
         $newUser = $this->iUser->store($validatedRequest);
         
+        Log::info(__('logging.created_user', [
+            'name' => Auth::user()->name,
+            'id' => Auth::user()->id,
+            'created_name' => $newUser->name,
+            'created_id' => $newUser->id,
+        ]));
+
         return ResponseBuilder::asSuccess(200)
             ->withData($newUser)
             ->build();
@@ -58,6 +71,8 @@ class UserController extends Controller
     {
         $user = $this->iUser->getById($id);
 
+        $this->authorize('view', $user);
+
         return ResponseBuilder::asSuccess(200)
             ->withData($user)
             ->build();
@@ -71,14 +86,23 @@ class UserController extends Controller
      * @return \Illuminate\Http\Response
      */
     public function update(UserRequest $request, $id)
-    {
+    {   
+        $this->authorize('update', $this->iUser->getById($id));
+
         $validatedRequest = $request->validated();
 
         $updatedUser = $this->iUser->update($validatedRequest, $id);
 
+        Log::info(__('logging.updated_user', [
+            'name' => Auth::user()->name,
+            'id' => Auth::user()->id,
+            'updated_name' => $updatedUser->name,
+            'updated_id' => $updatedUser->id,
+        ]));
+
         return ResponseBuilder::asSuccess(200)
-            ->withData($updatedUser)
-            ->build();
+           ->withData($updatedUser)
+           ->build();
     }
 
     /**
@@ -89,8 +113,19 @@ class UserController extends Controller
      */
     public function destroy($id)
     {
+        $deletedUser = $this->iUser->getById($id);
+
+        $this->authorize('delete', $deletedUser);
+
         if($this->iUser->destroy($id))
         {
+             Log::info(__('logging.deleted_user', [
+                'name' => Auth::user()->name,
+                'id' => Auth::user()->id,
+                'deleted_name' => $deletedUser->name,
+                'deleted_id' => $deletedUser->id,
+            ]));
+             
             return ResponseBuilder::asSuccess(200)
                 ->withMessage('User successfully deleted.')
                 ->build();
