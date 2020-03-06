@@ -2,41 +2,69 @@
 
 namespace App;
 
+use GuzzleHttp\Client;
 use Laravel\Passport\HasApiTokens;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
-use App\Notifications\ApiResetPasswordNotification;
+use OwenIt\Auditing\Contracts\Auditable;
+use App\Notifications\WelcomeNotification;
+use App\Notifications\ResetPasswordNotification;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class User extends Authenticatable
+class User extends Authenticatable implements Auditable
 {
-    use HasApiTokens, Notifiable;
+    use HasApiTokens, Notifiable, \OwenIt\Auditing\Auditable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array
-     */
     protected $fillable = [
-        'user_type_id', 'name', 'username', 'email', 'password', 'active',
+        'user_type_id',
+        'branch_id', 'name',
+        'username',
+        'email',
+        'password',
+        'active',
     ];
 
-    /**
-     * The attributes that should be hidden for arrays.
-     *
-     * @var array
-     */
     protected $hidden = [
-        'password', 'remember_token',
+        'password',
+        'remember_token',
     ];
 
-    public function user_type()
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
+    public function isActive()
+    {
+        return (bool)$this->active;
+    }
+
+    public function userType()
     {
         return $this->belongsTo('App\UserType');
     }
 
+    public function removeTokens()
+    {
+        if (count($this->tokens) > 0) {
+            $this->tokens->each(function (\Laravel\Passport\Token $token) {
+                $token->delete();
+            });
+        }
+    }
+
+    public function allowedModuleActions()
+    {
+        return $this->userType->moduleActions;
+    }
+
     public function sendPasswordResetNotification($token)
     {
-        $this->notify(new ApiResetPasswordNotification($token, $this->email));
+        $this->notify(new ResetPasswordNotification($token, $this->email));
+    }
+
+    public function sendWelcomeNotification($password)
+    {
+        $this->notify(new WelcomeNotification($this, $password));
     }
 }

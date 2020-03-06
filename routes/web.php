@@ -10,17 +10,14 @@
 | contains the "web" middleware group. Now create something great!
 |
 */
-
-Route::get('/', function ()
-    {
-        return view('welcome');
-    });
-
-Auth::routes();
+// Authentication Routes...
+Route::get('/', 'Auth\LoginController@showLoginForm')->name('login');
+Route::post('/', 'Auth\LoginController@login');
+Route::post('logout', 'Auth\LoginController@logout')->name('logout');
 
 Route::get('/home', 'HomeController@index')->name('home');
 
-Route::get('/routes', function() {
+/*Route::get('/routes', function() {
     $routes = [];
     foreach (\Route::getRoutes()->getIterator() as $route){
         if (strpos($route->uri, 'api') !== false && !Str::contains($route->uri, 'telescope')){
@@ -28,4 +25,6 @@ Route::get('/routes', function() {
         }
     }
     dd($routes);
-});
+});*/
+
+Route::get('/test', 'TestController@test');
